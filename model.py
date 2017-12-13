@@ -8,6 +8,10 @@ import keras.backend as K
 #m=v.mean(axis=-2, keepdims=True)
 #v - m
 
+
+T_AXIS = -2
+
+
 class RepeatElements(Layer):
 
     def __init__(self, rep, axis=-1, **kwargs):
@@ -23,8 +27,11 @@ class RepeatElements(Layer):
         output_shape[self.axis] *= self.rep
         return tuple(output_shape)
 
+    def get_config(self):
+        config = {'rep': self.rep, 'axis': self.axis}
+        base_config = super(RepeatElements, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
-CHANNEL_AXIS = -2
 
 class ElementwiseMaxPool(Layer):
 
@@ -33,17 +40,19 @@ class ElementwiseMaxPool(Layer):
         self.keepdims = keepdims
 
     def call(self, inputs, **kwargs):
-        return K.max(inputs, axis=CHANNEL_AXIS, keepdims=self.keepdims)
+        return K.max(inputs, axis=T_AXIS, keepdims=self.keepdims)
 
     def compute_output_shape(self, input_shape):
-        output_shape = list(input_shape)
+        output_shape = input_shape[:T_AXIS]
         if self.keepdims:
-            output_shape[CHANNEL_AXIS] = 1
-        else:
-            dim_axis = CHANNEL_AXIS + 1
-            output_shape[CHANNEL_AXIS] = output_shape[dim_axis]
-            output_shape = output_shape[:dim_axis]
-        return tuple(output_shape)
+            output_shape += (1,)
+        output_shape += (input_shape[T_AXIS + 1],)
+        return output_shape
+
+    def get_config(self):
+        config = {'keepdims': self.keepdims}
+        base_config = super(ElementwiseMaxPool, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 
 def fcn_block(x, units, name=None):
@@ -61,7 +70,7 @@ def vfe_block(x, cout, name=None):
         name = 'vfe'
     x = fcn_block(x, cout // 2, name)
     max = ElementwiseMaxPool(keepdims=True, name=name + '_maxpool')(x)
-    max = RepeatElements(x.shape[CHANNEL_AXIS].value, axis=CHANNEL_AXIS, name=name + '_repeat')(max)
+    max = RepeatElements(x.shape[T_AXIS].value, axis=T_AXIS, name=name + '_repeat')(max)
     x = Concatenate(name=name + '_concat')([max, x])
     return x
 
