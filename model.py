@@ -1,6 +1,7 @@
 
 from keras.models import Model
-from keras.layers import Dense, BatchNormalization, Activation, Layer, Input, Concatenate
+from keras.layers import Dense, BatchNormalization, Activation, Layer, Input, Concatenate,\
+    Conv3D, ZeroPadding3D, Permute, Reshape, Conv2D, ZeroPadding2D, Conv2DTranspose
 
 import keras.backend as K
 
@@ -23,32 +24,100 @@ class RepeatElements(Layer):
         return tuple(output_shape)
 
 
+CHANNEL_AXIS = -2
+
 class ElementwiseMaxPool(Layer):
 
+    def __init__(self, keepdims=False, **kwargs):
+        super(ElementwiseMaxPool, self).__init__(**kwargs)
+        self.keepdims = keepdims
+
     def call(self, inputs, **kwargs):
-        return K.max(inputs, axis=-2, keepdims=True)
+        return K.max(inputs, axis=CHANNEL_AXIS, keepdims=self.keepdims)
 
     def compute_output_shape(self, input_shape):
         output_shape = list(input_shape)
-        output_shape[-2] = 1
+        if self.keepdims:
+            output_shape[CHANNEL_AXIS] = 1
+        else:
+            dim_axis = CHANNEL_AXIS + 1
+            output_shape[CHANNEL_AXIS] = output_shape[dim_axis]
+            output_shape = output_shape[:dim_axis]
         return tuple(output_shape)
+
+
+def fcn_block(x, units, name=None):
+    if name is None:
+        name = 'fcn'
+    x = Dense(units, name=name + '_dense')(x)
+    x = BatchNormalization(name=name + '_bn')(x)
+    x = Activation('relu', name=name + '_relu')(x)
+    return x
 
 
 def vfe_block(x, cout, name=None):
     assert cout % 2 == 0
     if name is None:
         name = 'vfe'
-    x = Dense(cout // 2, name=name + '_dense')(x)
-    x = BatchNormalization(name=name + '_bn')(x)
-    x = Activation('relu', name=name + '_relu')(x)
-    max = ElementwiseMaxPool(name=name + '_maxpool')(x)
-    max = RepeatElements(x.shape[-2].value, axis=-2, name=name + '_repeat')(max)
+    x = fcn_block(x, cout // 2, name)
+    max = ElementwiseMaxPool(keepdims=True, name=name + '_maxpool')(x)
+    max = RepeatElements(x.shape[CHANNEL_AXIS].value, axis=CHANNEL_AXIS, name=name + '_repeat')(max)
     x = Concatenate(name=name + '_concat')([max, x])
     return x
 
 
+def mid_conv_block(x, cout, k, s, p, name=None):
+    if name is None:
+        name = 'conv'
+    x = ZeroPadding3D(p, name=name + '_pad')(x)
+    x = Conv3D(cout, k, strides=s, name=name + '_conv')(x)
+    x = BatchNormalization(name=name + '_bn')(x)
+    x = Activation('relu', name=name + '_relu')(x)
+    return x
+
+
+def _rpn_conv(x, cout, k, s, p, name, i=None):
+    if i is not None:
+        name += '_blk' + str(i)
+    x = ZeroPadding2D(p, name=name + '_pad')(x)
+    x = Conv2D(cout, k, strides=s, name=name + '_conv')(x)
+    x = BatchNormalization(name=name + '_bn')(x)
+    x = Activation('relu', name=name + '_relu')(x)
+    return x
+
+
+def rpn_conv_block(x, cout, q, name=None):
+    if name is None:
+        name = 'rpn_conv'
+    x = _rpn_conv(x, cout, 3, 2, 1, name)
+    for i in range(q):
+        x = _rpn_conv(x, cout, 3, 1, 1, name, i + 1)
+    return x
+
+
 def make():
-    x = Input((1, 2, 3, 4, 2, 7))
-    y = vfe_block(x, 32, 'vfe_1')
-    m = Model(x, y)
+    Dp = 10
+    Hp = 400
+    Wp = 352
+    T = 35
+    x = Input((Dp, Hp, Wp, T, 7))
+    y = vfe_block(x, 32, 'vfe1')
+    y = vfe_block(y, 128, 'vfe2')
+    y = fcn_block(y, 128, 'fcn1')
+    y = ElementwiseMaxPool(name='maxpool')(y)
+    y = mid_conv_block(y, 64, 3, (2, 1, 1), (1, 1, 1), name='mid_conv1')
+    y = mid_conv_block(y, 64, 3, (1, 1, 1), (0, 1, 1), name='mid_conv2')
+    y = mid_conv_block(y, 64, 3, (2, 1, 1), (1, 1, 1), name='mid_conv3')
+    y = Permute((2, 3, 4, 1))(y)
+    y = Reshape((Hp, Wp, -1))(y)
+    y = rpn_conv_block(y, 128, 3, name='rpn_conv1')
+    y_deconv1 = Conv2DTranspose(256, 3, strides=1, padding='same', name='rpn_deconv1')(y)
+    y = rpn_conv_block(y, 128, 5, name='rpn_conv2')
+    y_deconv2 = Conv2DTranspose(256, 2, strides=2, padding='same', name='rpn_deconv2')(y)
+    y = rpn_conv_block(y, 256, 5, name='rpn_conv3')
+    y = Conv2DTranspose(256, 4, strides=4, padding='same', name='rpn_deconv3')(y)
+    y = Concatenate()([y, y_deconv2, y_deconv1])
+    y1 = Conv2D(2, 1, strides=1, padding='same')(y)
+    y2 = Conv2D(14, 1, strides=1, padding='same')(y)
+    m = Model(x, [y1, y2])
     return m
