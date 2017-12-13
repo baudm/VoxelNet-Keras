@@ -58,7 +58,14 @@ class ElementwiseMaxPool(Layer):
 def fcn_block(x, units, name=None):
     if name is None:
         name = 'fcn'
+    shape = x._keras_shape
+    d = shape[-5]
+    h = shape[-4]
+    s = shape[-3:]
+    shape = (d*h,) + s
+    x = Reshape(shape)(x)
     x = Dense(units, name=name + '_dense')(x)
+    x = Reshape((10, 400, 352, 35, units))(x)
     x = BatchNormalization(name=name + '_bn')(x)
     x = Activation('relu', name=name + '_relu')(x)
     return x
@@ -130,3 +137,28 @@ def make():
     y2 = Conv2D(14, 1, strides=1, padding='same')(y)
     m = Model(x, [y1, y2])
     return m
+
+import numpy as np
+
+def main():
+    model = make()
+    model.summary()
+
+    model.compile('sgd', ['mse', 'mse'])
+
+    Dp = 10
+    Hp = 400
+    Wp = 352
+    T = 35
+    x = np.random.random((1, Dp, Hp, Wp, T, 7))
+    y1 = np.random.random((1, Hp//2, Wp//2, 2))
+    y2 = np.random.random((1, Hp // 2, Wp // 2, 14))
+
+    def gen():
+        yield x, [y1, y2]
+
+    #model.fit_generator(gen(), steps_per_epoch=1, epochs=1)
+
+
+if __name__ == '__main__':
+    main()
