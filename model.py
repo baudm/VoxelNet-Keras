@@ -167,12 +167,14 @@ def main():
     plot_model(model, show_shapes=True)
     model.summary()
 
+    # TODO: actual loss implementation
     model.compile('sgd', ['mse', 'mse'])
 
     Dp = 10
     Hp = 400
     Wp = 352
     T = 35
+    # TODO: data preparation, i.e. grouping and sampling (this is done outside the network)
     x = np.random.random((1, Dp, Hp, Wp, T, 7))
     y1 = np.random.random((1, Hp//2, Wp//2, 2))
     y2 = np.random.random((1, Hp // 2, Wp // 2, 14))
