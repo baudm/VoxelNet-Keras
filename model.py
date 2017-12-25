@@ -13,6 +13,7 @@ T_AXIS = -2
 
 
 class RepeatElements(Layer):
+    """Layer interface to K.repeat_elements()"""
 
     def __init__(self, rep, axis=-1, **kwargs):
         super(RepeatElements, self).__init__(**kwargs)
@@ -34,6 +35,19 @@ class RepeatElements(Layer):
 
 
 class ElementwiseMaxPool(Layer):
+    """
+    Element-wise max pooling operation as described in the paper.
+
+    Assumes an input shape of (Dp, Hp, Wp, T, N)
+    where Dp, Hp, and Wp are the dimensions of the voxel cube,
+          T is the number of samples per voxel,
+          and N is the dimensionality of the sample (e.g. 16 for VFE-1)
+
+    The max pooling operation is done w.r.t. the T axis
+
+    Outputs (Dp, Hp, Wp, N) by default,
+         or (Dp, Hp, Wp, 1, N) if keepdims is True
+    """
 
     def __init__(self, keepdims=False, **kwargs):
         super(ElementwiseMaxPool, self).__init__(**kwargs)
