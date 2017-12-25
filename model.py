@@ -133,15 +133,18 @@ def make():
     y = rpn_conv_block(y, 256, 5, name='rpn_conv3')
     y = Conv2DTranspose(256, 4, strides=4, padding='same', name='rpn_deconv3')(y)
     y = Concatenate()([y, y_deconv2, y_deconv1])
-    y1 = Conv2D(2, 1, strides=1, padding='same')(y)
-    y2 = Conv2D(14, 1, strides=1, padding='same')(y)
+    y1 = Conv2D(2, 1, strides=1, padding='same', name='cls')(y)
+    y2 = Conv2D(14, 1, strides=1, padding='same', name='reg')(y)
     m = Model(x, [y1, y2])
     return m
 
 import numpy as np
+from keras.utils.vis_utils import plot_model
+
 
 def main():
     model = make()
+    plot_model(model, show_shapes=True)
     model.summary()
 
     model.compile('sgd', ['mse', 'mse'])
