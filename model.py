@@ -124,6 +124,9 @@ def make():
     Hp = 400
     Wp = 352
     T = 35
+    # TODO: maybe implement the grouping, sampling, and preprocessing in-network?
+    # The grouping and sampling can be done outside the network.
+    # Here we expect the preprocessed data already.
     x = Input((Dp, Hp, Wp, T, 7))
     y = vfe_block(x, 32, 'vfe1')
     y = vfe_block(y, 128, 'vfe2')
