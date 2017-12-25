@@ -55,9 +55,8 @@ class ElementwiseMaxPool(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-def fcn_block(x, units, name=None):
-    if name is None:
-        name = 'fcn'
+def fcn_block(x, units, name='fcn'):
+    # Hack for Tensorflow because it can't handle bias terms which have more than 5D
     shape = x._keras_shape
     d = shape[-5]
     h = shape[-4]
@@ -65,16 +64,15 @@ def fcn_block(x, units, name=None):
     shape = (d*h,) + s
     x = Reshape(shape)(x)
     x = Dense(units, name=name + '_dense')(x)
-    x = Reshape((10, 400, 352, 35, units))(x)
+    # Revert back to actual shape
+    x = Reshape((d, h, s[0], s[1], units))(x)
     x = BatchNormalization(name=name + '_bn')(x)
     x = Activation('relu', name=name + '_relu')(x)
     return x
 
 
-def vfe_block(x, cout, name=None):
+def vfe_block(x, cout, name='vfe'):
     assert cout % 2 == 0
-    if name is None:
-        name = 'vfe'
     x = fcn_block(x, cout // 2, name)
     max = ElementwiseMaxPool(keepdims=True, name=name + '_maxpool')(x)
     max = RepeatElements(x.shape[T_AXIS].value, axis=T_AXIS, name=name + '_repeat')(max)
@@ -82,9 +80,7 @@ def vfe_block(x, cout, name=None):
     return x
 
 
-def mid_conv_block(x, cout, k, s, p, name=None):
-    if name is None:
-        name = 'conv'
+def mid_conv_block(x, cout, k, s, p, name='conv'):
     x = ZeroPadding3D(p, name=name + '_pad')(x)
     x = Conv3D(cout, k, strides=s, name=name + '_conv')(x)
     x = BatchNormalization(name=name + '_bn')(x)
@@ -102,9 +98,7 @@ def _rpn_conv(x, cout, k, s, p, name, i=None):
     return x
 
 
-def rpn_conv_block(x, cout, q, name=None):
-    if name is None:
-        name = 'rpn_conv'
+def rpn_conv_block(x, cout, q, name='rpn_conv'):
     x = _rpn_conv(x, cout, 3, 2, 1, name)
     for i in range(q):
         x = _rpn_conv(x, cout, 3, 1, 1, name, i + 1)
