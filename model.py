@@ -118,7 +118,19 @@ def make():
     y = mid_conv_block(y, 64, 3, (2, 1, 1), (1, 1, 1), name='mid_conv1')
     y = mid_conv_block(y, 64, 3, (1, 1, 1), (0, 1, 1), name='mid_conv2')
     y = mid_conv_block(y, 64, 3, (2, 1, 1), (1, 1, 1), name='mid_conv3')
+    # At this point, the output shape is (2, Hp, Wp, 64),
+    # because we're using the 'channels_last' data format (it's required for the Dense layers to work)
+    #
+    # However, the paper is using the 'channels_first' data format, which yields the shape:
+    # (64, 2, Hp, Wp) here. It is then reshaped to (128, Hp, Wp).
+    #
+    # Since the ordering of our dimensions is different from that of the paper, we cannot simply
+    # reshape to the desired shape; the spatial relationships of the dimensions should be preserved.
+    # Thus, prior to reshaping, we permute the output such that the dimensions to be 'combined'
+    # are 'near' each other. That said, we permute such that the shape becomes:
+    # (Hp, Wp, 64, 2)
     y = Permute((2, 3, 4, 1))(y)
+    # Then reshape it to: (Hp, Wp, 128), consistent with the 'channels_last' data format.
     y = Reshape((Hp, Wp, -1))(y)
     y = rpn_conv_block(y, 128, 3, name='rpn_conv1')
     y_deconv1 = Conv2DTranspose(256, 3, strides=1, padding='same', name='rpn_deconv1')(y)
